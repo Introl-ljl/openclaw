@@ -1,5 +1,9 @@
 import { normalizeMessageChannel } from "../../utils/message-channel.js";
-import type { SessionConfig, SessionResetConfig } from "../types.base.js";
+import type {
+  SessionConfig,
+  SessionResetConfig,
+  SessionResetRelevanceCheckConfig,
+} from "../types.base.js";
 import { DEFAULT_IDLE_MINUTES } from "./types.js";
 
 export type SessionResetMode = "daily" | "idle";
@@ -9,16 +13,48 @@ export type SessionResetPolicy = {
   mode: SessionResetMode;
   atHour: number;
   idleMinutes?: number;
+  relevanceCheck?: Required<
+    Pick<
+      SessionResetRelevanceCheckConfig,
+      "prompt" | "systemPrompt" | "summaryPrompt" | "summarySystemPrompt"
+    >
+  > & {
+    enabled: boolean;
+  };
 };
 
 export type SessionFreshness = {
   fresh: boolean;
   dailyResetAt?: number;
   idleExpiresAt?: number;
+  staleReason?: SessionResetMode;
 };
 
 export const DEFAULT_RESET_MODE: SessionResetMode = "daily";
 export const DEFAULT_RESET_AT_HOUR = 4;
+const DEFAULT_RELEVANCE_CHECK_PROMPT = [
+  "Classify whether the NEW inbound message should continue the PREVIOUS conversation after an idle gap.",
+  'Reply with exactly one word: "RELATED" or "UNRELATED".',
+  'Choose "RELATED" only when the new message clearly continues the same task, topic, or follow-up.',
+  'Choose "UNRELATED" when it starts a new topic, asks for different work, or lacks a clear connection.',
+  "Do not use tools. Do not add any explanation.",
+].join(" ");
+const DEFAULT_RELEVANCE_CHECK_SYSTEM_PROMPT = [
+  "Idle-gap relevance check.",
+  "You are making an internal routing decision before normal conversation resumes.",
+  'Output must be exactly one token: "RELATED" or "UNRELATED".',
+].join(" ");
+const DEFAULT_RELEVANCE_SUMMARY_PROMPT = [
+  "A new inbound message arrived after an idle gap and was judged unrelated to the prior conversation.",
+  "Before resetting the conversation, append a concise factual summary of the prior conversation to memory/YYYY-MM-DD.md.",
+  "Write only durable notes worth keeping for later recall.",
+  "If there is nothing worth storing, reply with NO_REPLY.",
+].join(" ");
+const DEFAULT_RELEVANCE_SUMMARY_SYSTEM_PROMPT = [
+  "Idle-gap pre-reset memory summary.",
+  "The prior conversation is about to be reset because the new inbound message is unrelated.",
+  "Store durable notes only in memory/YYYY-MM-DD.md and reply with NO_REPLY after writing.",
+].join(" ");
 
 const THREAD_SESSION_MARKERS = [":thread:", ":topic:"];
 const GROUP_SESSION_MARKERS = [":group:", ":channel:"];
@@ -116,7 +152,27 @@ export function resolveSessionResetPolicy(params: {
     idleMinutes = DEFAULT_IDLE_MINUTES;
   }
 
-  return { mode, atHour, idleMinutes };
+  const mergedRelevanceCheck = typeReset?.relevanceCheck ?? baseReset?.relevanceCheck ?? undefined;
+  const defaultRelevanceEnabled =
+    mode === "idle" && (params.resetType === "direct" || params.resetType === "thread");
+  const relevanceEnabled = mergedRelevanceCheck?.enabled ?? defaultRelevanceEnabled;
+
+  return {
+    mode,
+    atHour,
+    idleMinutes,
+    relevanceCheck: {
+      enabled: relevanceEnabled,
+      prompt: mergedRelevanceCheck?.prompt?.trim() || DEFAULT_RELEVANCE_CHECK_PROMPT,
+      systemPrompt:
+        mergedRelevanceCheck?.systemPrompt?.trim() || DEFAULT_RELEVANCE_CHECK_SYSTEM_PROMPT,
+      summaryPrompt:
+        mergedRelevanceCheck?.summaryPrompt?.trim() || DEFAULT_RELEVANCE_SUMMARY_PROMPT,
+      summarySystemPrompt:
+        mergedRelevanceCheck?.summarySystemPrompt?.trim() ||
+        DEFAULT_RELEVANCE_SUMMARY_SYSTEM_PROMPT,
+    },
+  };
 }
 
 export function resolveChannelResetConfig(params: {
@@ -155,6 +211,7 @@ export function evaluateSessionFreshness(params: {
     fresh: !(staleDaily || staleIdle),
     dailyResetAt,
     idleExpiresAt,
+    staleReason: staleDaily ? "daily" : staleIdle ? "idle" : undefined,
   };
 }
 

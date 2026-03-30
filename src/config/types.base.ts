@@ -69,12 +69,26 @@ export type SessionSendPolicyConfig = {
 };
 
 export type SessionResetMode = "daily" | "idle";
+export type SessionResetRelevanceCheckConfig = {
+  /** Enable model-based relevance checking before an idle-triggered reset. */
+  enabled?: boolean;
+  /** User prompt used for the silent relevance-check turn. */
+  prompt?: string;
+  /** System prompt appended for the silent relevance-check turn. */
+  systemPrompt?: string;
+  /** User prompt used for the silent pre-reset summary-to-memory turn. */
+  summaryPrompt?: string;
+  /** System prompt appended for the silent pre-reset summary-to-memory turn. */
+  summarySystemPrompt?: string;
+};
 export type SessionResetConfig = {
   mode?: SessionResetMode;
   /** Local hour (0-23) for the daily reset boundary. */
   atHour?: number;
   /** Sliding idle window (minutes). When set with daily mode, whichever expires first wins. */
   idleMinutes?: number;
+  /** Optional relevance gate for idle-triggered resets. */
+  relevanceCheck?: SessionResetRelevanceCheckConfig;
 };
 export type SessionResetByTypeConfig = {
   direct?: SessionResetConfig;

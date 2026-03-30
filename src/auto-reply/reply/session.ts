@@ -12,6 +12,8 @@ import { deriveSessionMetaPatch } from "../../config/sessions/metadata.js";
 import { resolveSessionTranscriptPath, resolveStorePath } from "../../config/sessions/paths.js";
 import {
   evaluateSessionFreshness,
+  type SessionFreshness,
+  type SessionResetPolicy,
   resolveChannelResetConfig,
   resolveSessionResetPolicy,
   resolveSessionResetType,
@@ -75,6 +77,10 @@ export type SessionInitResult = {
   isGroup: boolean;
   bodyStripped?: string;
   triggerBodyNormalized: string;
+  idleRelevanceCheckPending: boolean;
+  idleRelevanceCheckPolicy?: SessionResetPolicy["relevanceCheck"];
+  staleSessionEntry?: SessionEntry;
+  staleSessionFreshness?: SessionFreshness;
 };
 
 function isResetAuthorizedForContext(params: {
@@ -383,14 +389,22 @@ export async function initSessionState(params: {
     resetType,
     resetOverride: channelReset,
   });
-  const freshEntry = entry
-    ? evaluateSessionFreshness({ updatedAt: entry.updatedAt, now, policy: resetPolicy }).fresh
-    : false;
+  const entryFreshness = entry
+    ? evaluateSessionFreshness({ updatedAt: entry.updatedAt, now, policy: resetPolicy })
+    : undefined;
+  const idleRelevanceCheckPending = Boolean(
+    entry && entryFreshness?.staleReason === "idle" && resetPolicy.relevanceCheck?.enabled === true,
+  );
+  const freshEntry = entry ? Boolean(entryFreshness?.fresh || idleRelevanceCheckPending) : false;
   // Capture the current session entry before any reset so its transcript can be
   // archived afterward.  We need to do this for both explicit resets (/new, /reset)
   // and for scheduled/daily resets where the session has become stale (!freshEntry).
   // Without this, daily-reset transcripts are left as orphaned files on disk (#35481).
-  const previousSessionEntry = (resetTriggered || !freshEntry) && entry ? { ...entry } : undefined;
+  const previousSessionEntry =
+    (resetTriggered || (!freshEntry && !idleRelevanceCheckPending)) && entry
+      ? { ...entry }
+      : undefined;
+  const staleSessionEntry = idleRelevanceCheckPending && entry ? { ...entry } : undefined;
   clearBootstrapSnapshotOnSessionRollover({
     sessionKey,
     previousSessionId: previousSessionEntry?.sessionId,
@@ -714,5 +728,9 @@ export async function initSessionState(params: {
     isGroup,
     bodyStripped,
     triggerBodyNormalized,
+    idleRelevanceCheckPending,
+    idleRelevanceCheckPolicy: idleRelevanceCheckPending ? resetPolicy.relevanceCheck : undefined,
+    staleSessionEntry,
+    staleSessionFreshness: idleRelevanceCheckPending ? entryFreshness : undefined,
   };
 }

@@ -159,6 +159,26 @@ describe("resolveSessionResetPolicy", () => {
     });
   });
 
+  it("enables idle relevance checks by default for direct idle resets", () => {
+    const policy = resolveSessionResetPolicy({
+      resetType: "direct",
+      resetOverride: { mode: "idle", idleMinutes: 10 },
+    });
+
+    expect(policy.relevanceCheck?.enabled).toBe(true);
+    expect(policy.relevanceCheck?.prompt).toContain("RELATED");
+    expect(policy.relevanceCheck?.summaryPrompt).toContain("memory/YYYY-MM-DD.md");
+  });
+
+  it("keeps idle relevance checks disabled by default for group idle resets", () => {
+    const policy = resolveSessionResetPolicy({
+      resetType: "group",
+      resetOverride: { mode: "idle", idleMinutes: 10 },
+    });
+
+    expect(policy.relevanceCheck?.enabled).toBe(false);
+  });
+
   it("treats idleMinutes=0 as never expiring by inactivity", () => {
     const freshness = evaluateSessionFreshness({
       updatedAt: 1_000,
@@ -174,6 +194,7 @@ describe("resolveSessionResetPolicy", () => {
       fresh: true,
       dailyResetAt: undefined,
       idleExpiresAt: undefined,
+      staleReason: undefined,
     });
   });
 });

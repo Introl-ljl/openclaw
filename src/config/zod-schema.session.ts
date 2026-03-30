@@ -13,11 +13,22 @@ import {
 } from "./zod-schema.core.js";
 import { sensitive } from "./zod-schema.sensitive.js";
 
+const SessionResetRelevanceCheckConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    prompt: z.string().optional(),
+    systemPrompt: z.string().optional(),
+    summaryPrompt: z.string().optional(),
+    summarySystemPrompt: z.string().optional(),
+  })
+  .strict();
+
 const SessionResetConfigSchema = z
   .object({
     mode: z.union([z.literal("daily"), z.literal("idle")]).optional(),
     atHour: z.number().int().min(0).max(23).optional(),
     idleMinutes: z.number().int().positive().optional(),
+    relevanceCheck: SessionResetRelevanceCheckConfigSchema.optional(),
   })
   .strict();
 

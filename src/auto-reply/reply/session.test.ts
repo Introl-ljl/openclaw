@@ -1038,6 +1038,47 @@ describe("initSessionState reset policy", () => {
     expect(result.sessionId).not.toBe(existingSessionId);
   });
 
+  it("defers idle reset for direct sessions when relevance checks are enabled", async () => {
+    vi.setSystemTime(new Date(2026, 0, 18, 5, 30, 0));
+    const root = await makeCaseDir("openclaw-reset-idle-relevance-");
+    const storePath = path.join(root, "sessions.json");
+    const sessionKey = "agent:main:whatsapp:dm:s2-relevance";
+    const existingSessionId = "idle-session-id-relevance";
+
+    await writeSessionStoreFast(storePath, {
+      [sessionKey]: {
+        sessionId: existingSessionId,
+        updatedAt: new Date(2026, 0, 18, 4, 45, 0).getTime(),
+        systemSent: true,
+      },
+    });
+
+    const cfg = {
+      session: {
+        store: storePath,
+        reset: {
+          mode: "idle",
+          idleMinutes: 30,
+        },
+      },
+    } as OpenClawConfig;
+    const result = await initSessionState({
+      ctx: { Body: "new topic", SessionKey: sessionKey },
+      cfg,
+      commandAuthorized: true,
+    });
+
+    expect(result.isNewSession).toBe(false);
+    expect(result.sessionId).toBe(existingSessionId);
+    expect(result.idleRelevanceCheckPending).toBe(true);
+    expect(result.staleSessionEntry?.sessionId).toBe(existingSessionId);
+    expect(result.staleSessionFreshness?.staleReason).toBe("idle");
+    expect(clearBootstrapSnapshotOnSessionRolloverSpy).toHaveBeenCalledWith({
+      sessionKey,
+      previousSessionId: undefined,
+    });
+  });
+
   it("uses per-type overrides for thread sessions", async () => {
     vi.setSystemTime(new Date(2026, 0, 18, 5, 0, 0));
     const root = await makeCaseDir("openclaw-reset-thread-");

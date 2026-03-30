@@ -22,6 +22,7 @@ import { handleInlineActions } from "./get-reply-inline-actions.js";
 import { runPreparedReply } from "./get-reply-run.js";
 import { finalizeInboundContext } from "./inbound-context.js";
 import { emitPreAgentMessageHooks } from "./message-preprocess-hooks.js";
+import { maybeHandleIdleRelevanceCheck } from "./session-idle-relevance.js";
 import { initSessionState } from "./session.js";
 import { createTypingController } from "./typing.js";
 
@@ -236,6 +237,37 @@ export async function getReplyFromConfig(
     triggerBodyNormalized,
     bodyStripped,
   } = sessionState;
+
+  const maybeUpdatedSessionState = await maybeHandleIdleRelevanceCheck({
+    cfg,
+    ctx: finalized,
+    commandAuthorized,
+    sessionState,
+    agentId,
+    agentDir,
+    workspaceDir,
+    timeoutMs,
+    provider,
+    model,
+  });
+  ({
+    sessionCtx,
+    sessionEntry,
+    previousSessionEntry,
+    sessionStore,
+    sessionKey,
+    sessionId,
+    isNewSession,
+    resetTriggered,
+    systemSent,
+    abortedLastRun,
+    storePath,
+    sessionScope,
+    groupResolution,
+    isGroup,
+    triggerBodyNormalized,
+    bodyStripped,
+  } = maybeUpdatedSessionState);
 
   if (resetTriggered && bodyStripped?.trim()) {
     const { applyResetModelOverride } = await loadSessionResetModelRuntime();
